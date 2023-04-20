@@ -1,0 +1,120 @@
+<job id="remote_control_watcher">
+<script language="VBScript" src="C:\Program Files\inventoryRC\libs\lib_core.vbs" ></script>
+<script language="VBScript" src="C:\Program Files\inventoryRC\libs\lib_aduser.vbs" ></script>
+<script language="VBScript" src="C:\Program Files\inventoryRC\libs\lib_fileio.vbs" ></script>
+<script language="VBScript" src="C:\Program Files\inventoryRC\libs\lib_procs.vbs" ></script>
+<script language="VBScript" src="params.vbs" ></script>
+<script language="VBScript">
+Option Explicit
+
+'Скрипт вызова ПО управления при появлении файлов в папке - пуле
+'v0.3 - Выставление прав на рабочую папку
+'v0.2 - Проверка на один одновременный процесс
+'v0.1 - initial:
+' 	* Ждет появления файлов
+'	* Проверяет, что они не старые
+'	* Обновляет heartbeat ежесекундно
+
+forceCscript
+privelegeMe
+
+checkDir workDir
+
+const scrName="inv_rc_watcher" : const scrVer="0.3"
+dim logFile : logFile = WorkDir & "\" & scrName & ".log"
+
+Msg "-" : Msg "Script started: "&scrName&" "&scrVer&" (core "&coreLibVer&")"
+
+
+
+
+Msg_ "Проверяем членство в группе ... "
+if  _
+	(not IsMember(objUser, "LiteManager Control") ) _
+	and _
+	(not IsMember(objUser, "LiteManager View") ) _
+	and _
+	(not IsMember(objUser, "LiteManager Support") ) _
+then 
+	Msg_n "- Нет членства в группах LiteManager Contorl / View / Support"
+	enterToExit
+else
+	Msg_n "- OK"
+end if
+
+if checkPidFile(pidFile) then
+	Msg "Процесс уже запущен"
+	enterToExit
+end if
+
+Msg_ "Предоставляем пользователям права на запись в рабочую папку"
+dim grantCmd : grantCmd="icacls """ & workDir & """ /grant *S-1-5-32-545:W"
+wshShell.run "icacls """ & workDir & """ /grant *S-1-5-32-545:W", 1, false
+Msg_n "- готово"
+
+Msg "Регистрирую протокол remotecontrol://"
+RegWrite "HKEY_CLASSES_ROOT\remotecontrol\","REG_SZ","Inventory Remote Control"
+RegWrite "HKEY_CLASSES_ROOT\remotecontrol\URL Protocol","REG_SZ",""
+RegWrite "HKEY_CLASSES_ROOT\remotecontrol\shell\open\command\","REG_SZ",_
+"""" & workDir &"\launcher.cmd"" ""%1"""
+
+sub doRCFile(byVal objFile)
+	dim extension, proc, comp
+
+	extension = objFSO.getExtensionName(objFile.name)
+	if UCase(extension) = "REMOTECONTROL" then
+		dim age : age=DateDiff("s",objFile.DateLastModified,Now())
+		if (age > fileTimeout) then
+			Msg objFile.Name & " получен " & age & " секунд назад - старый (удаляю)"
+			objFile.Delete
+		else
+			Msg objFile.Name & " получен " & age & " секунд назад - OK (соединяем)"
+			comp=getFile(objFile.Path)
+			objFile.Delete
+			Msg "Подключаемся к " & comp & "..."
+			set proc=wshShell.exec("""C:\Program Files (x86)\LiteManager Pro - Viewer\ROMViewer.exe"" /name:" & comp & " /VIEWONLY /LANG:RU /CLOSEAFTERFULLCONTROL")
+			Msg "Процесс запущен"
+
+			dim waitStart: waitStart=now()			
+			do while true
+				If wshShell.AppActivate (comp & "  - Просмотр       (Ctrl+F12 - настройки)") Then
+				'If wshShell.AppActivate ("ROMViewer.exe") Then
+ 					Msg "Окно появилось"
+					'wshShell.SendKeys "% r"
+					Msg "powershell ""& """"" & workDir & "\fg.ps1"""" " & proc.ProcessID & """"
+					safeRun "powershell ""& \""" & workDir & "\fg.ps1\"" " & proc.ProcessID & """"
+					exit do
+				elseif DateDiff("s",waitStart,now())>10 Then
+					Msg "Окно не появилось за 10 сек. Возможно машина не в сети."
+					exit do
+				End If
+				WScript.Sleep 500
+			loop
+		end if
+	else
+		debugMsg objFile.Name & " skipped - " & extension
+	end if
+end sub
+
+sub checkRCFiles(byVal strFolder)
+	debugMsg "Checking " & strFolder & "..."
+	dim objFolder: Set objFolder = objFSO.GetFolder(strFolder)
+	dim colFiles: Set colFiles = objFolder.Files
+	dim objFile
+	For each objFile in colFiles
+		debugMsg "Find " & objFile.Name
+		doRCFile objFile
+	Next
+end sub
+
+
+Msg "Ожидаю запрос на удаленное соединение ..."
+do while true
+	checkRCFiles(workDir)
+	writePidFile pidFile
+	WScript.Sleep 1000
+	Msg__ "."
+loop
+
+</script>
+</job>

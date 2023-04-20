@@ -1,0 +1,97 @@
+<job id="remote_control_watcher">
+<script language="VBScript" src="libs/lib_core.vbs" ></script>
+<script language="VBScript" src="libs/lib_fileio.vbs" ></script>
+<script language="VBScript">
+Option Explicit
+'DEBUGMODE=1
+'Скрипт вызова ПО управления при появлении файлов в папке - пуле
+'v0.1 
+
+workDir = "C:\Program Files\inventoryRC\"
+const fileTimeout=40
+const hbTimeout=10
+const heartBeatFile="watcher.pid"
+
+forceCscript
+
+const scrName="inv_rc_launcher" : const scrVer="0.1"
+dim logFile : logFile = WorkDir & scrName & ".log"
+
+Msg "-" : Msg "Script started: "&scrName&" "&scrVer&" (core "&coreLibVer&")"
+
+if WScript.Arguments.Count=0 then
+	Msg "Аргумент не передан. Нечего делать."
+	enterToExit
+end if
+
+dim url: url=WScript.Arguments(0)
+
+const urlPrefix="remotecontrol://"
+if not Left(url,Len(urlPrefix))=urlPrefix then
+	Msg "Аргумент " & url & " - неверный"
+	enterToExit
+end if
+
+'отсекаем префикс слева
+url=Right(url,Len(url)-Len(urlPrefix))
+
+'отсекаем / справа
+if Right(url,1)="/" then url=Left(url,Len(url)-1)
+Msg "Открываю удаленное управление " & url & "..."
+
+Msg "Ожидаю запуска watcher ... "
+dim age, objFile, watcherExecuted
+watcherExecuted=false
+do while true
+	if objFSO.fileExists (workDir & heartBeatFile) then
+		with objFSO.getFile(workDir & heartBeatFile)
+			age=DateDiff("s", .DateLastModified,Now())
+		end with
+		if (age < hbTimeout) then
+			Msg "Heartbeat обновлен " & age & " секунд назад - ОК"
+			exit do
+		else	
+			debugMsg "Heartbeat обновлен " & age & " секунд назад - Ingnore"
+			if not watcherExecuted then
+				safeRun "cscript """ & workDir & "\watcher.wsf"""
+				watcherExecuted=true
+			end if
+		end if
+	else
+		debugMsg workDir & heartBeatFile & " - missing"
+	end if
+	wscript.sleep 1000
+loop
+
+
+Msg "Генерирую файл соединения ..."
+writeFile workDir & url &".remoteControl", url
+
+
+Msg "Ожидаю, когда watcher заберет файл ..."
+do while true
+	wscript.sleep 1000
+	if not objFSO.fileExists (workDir & url &".remoteControl") then
+		exit do
+	else
+		with objFSO.getFile(workDir & url &".remoteControl")
+			age=DateDiff("s", .DateLastModified,Now())
+		end with
+		if (age > fileTimeout) then
+			Msg "Превышен таймаут ожидания. Проверьте, что watcher работает"
+			enterToExit
+		end if
+	end if
+loop
+
+Msg "ОК"
+
+
+'set compname=%1
+'set compname=%compname:remotecontrol://=%
+'set compname=%compname:/=%
+'echo Ожидайте, подключаем %compname%
+'start "" /MAX "C:\Program Files (x86)\LiteManager Pro - Viewer\ROMViewer.exe" /name:%compname:/=% /VIEWONLY
+
+</script>
+</job>

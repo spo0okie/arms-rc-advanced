@@ -1,0 +1,42 @@
+<job id="gp_invRC_install">
+<script language="VBScript" src="libs/lib_core.vbs" ></script>
+<script language="VBScript" src="libs/lib_aduser.vbs" ></script>
+<script language="VBScript" src="libs/lib_fileio.vbs" ></script>
+<script language="VBScript" src="libs/lib_patches.vbs" ></script>
+<script language="VBScript" src="params.vbs" ></script>
+<script language="VBScript">
+Option Explicit
+
+const scrName=		"gp_invRC_install" : const scrVer="0.1"
+'v0.1 - копирование
+
+dim DistrFolder : DistrFolder=objFSO.GetParentFolderName(WScript.ScriptFullName)
+
+ForceCScript
+privelegeMe()
+checkFullAdminRights()
+checkDir workDir
+
+DEBUGMODE=1
+
+'логфайл куда будут дублироваться все сообщения
+Dim LogFile : Set logFile = objFSO.OpenTextFile(WorkDir & "\" & scrName & ".log", 8, True)
+Msg "-" : Msg "Script started: "&scrName&" "&scrVer
+
+dim installJob : set installJob = CreateObject("Scripting.Dictionary")
+installJob.add 	"copy_dir",		DistrFolder
+installJob.add 	"copy_to",		workDir
+patchSyncDir(installJob)
+
+
+createAllUsersDesktopLnk "Inventory RC",_	
+	workDir & "\" & watcher,_	
+	"",_					
+	workDir ,_			
+	workDir & "\ico.ico",_ 
+	"Скрипт удаленного подключения из инвентаризации"
+
+
+Msg "Script done."
+</script>
+</job>

@@ -1,0 +1,1 @@
+cscript "C:\Program Files\inventoryRC\launcher.wsf" "%1"
